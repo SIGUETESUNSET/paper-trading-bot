@@ -250,6 +250,8 @@ def backtest(
     peak_equity = starting_cash
     max_drawdown = 0.0
     risk_limit_triggered = False
+    # Cache the bar-price series once to avoid repeated dataclass attribute lookups
+    # in the simulation loop.
     close_prices = [bar.close for bar in bars]
     open_prices = [bar.open for bar in bars]
 
