@@ -210,6 +210,8 @@ def backtest(
     fast_window: int = 5,
     slow_window: int = 20,
     start_index: int = 0,
+    _close_prices: Sequence[float] | None = None,
+    _open_prices: Sequence[float] | None = None,
 ) -> BacktestResult:
     """Run a long-only SMA crossover backtest with next-bar-open fills.
 
@@ -250,8 +252,12 @@ def backtest(
     peak_equity = starting_cash
     max_drawdown = 0.0
     risk_limit_triggered = False
-    close_prices = [bar.close for bar in bars]
-    open_prices = [bar.open for bar in bars]
+    close_prices = _close_prices if _close_prices is not None else tuple(
+        bar.close for bar in bars
+    )
+    open_prices = _open_prices if _open_prices is not None else tuple(
+        bar.open for bar in bars
+    )
 
     for index, bar in enumerate(bars):
         if (
@@ -499,6 +505,15 @@ def rank_parameters(
         )
         for fold_index in range(fold_count)
     ]
+    close_prices = tuple(bar.close for bar in bars)
+    open_prices = tuple(bar.open for bar in bars)
+    fold_prices = {
+        fold_end: (
+            close_prices[:fold_end],
+            open_prices[:fold_end],
+        )
+        for _, fold_end in fold_boundaries
+    }
     candidates: list[ParameterScore] = []
     for fast_window in range(1, max_window):
         for slow_window in range(fast_window + 1, max_window + 1):
@@ -512,22 +527,29 @@ def rank_parameters(
                 drawdown_limit=drawdown_limit,
                 fast_window=fast_window,
                 slow_window=slow_window,
+                _close_prices=close_prices,
+                _open_prices=open_prices,
             )
-            fold_results = tuple(
-                backtest(
-                    bars[:fold_end],
-                    starting_cash=starting_cash,
-                    allocation=allocation,
-                    max_allocation=max_allocation,
-                    fee_rate=fee_rate,
-                    slippage_rate=slippage_rate,
-                    drawdown_limit=drawdown_limit,
-                    fast_window=fast_window,
-                    slow_window=slow_window,
-                    start_index=fold_start,
+            fold_results = []
+            for fold_start, fold_end in fold_boundaries:
+                fold_close_prices, fold_open_prices = fold_prices[fold_end]
+                fold_results.append(
+                    backtest(
+                        bars[:fold_end],
+                        starting_cash=starting_cash,
+                        allocation=allocation,
+                        max_allocation=max_allocation,
+                        fee_rate=fee_rate,
+                        slippage_rate=slippage_rate,
+                        drawdown_limit=drawdown_limit,
+                        fast_window=fast_window,
+                        slow_window=slow_window,
+                        start_index=fold_start,
+                        _close_prices=fold_close_prices,
+                        _open_prices=fold_open_prices,
+                    )
                 )
-                for fold_start, fold_end in fold_boundaries
-            )
+            fold_results = tuple(fold_results)
             candidates.append(
                 ParameterScore(
                     fast_window=fast_window,
